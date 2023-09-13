@@ -1,0 +1,96 @@
+name: Publicar
+
+on:
+  workflow_dispatch
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}      
+    permissions: 
+      contents: write
+    steps:
+      - name: Gerando Token para Comit
+        id: generate_token
+        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Obtendo o código da aplicação
+        uses: actions/checkout@v3
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+      - name: Configurando JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+          cache: 'maven'
+          gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}
+
+      - name: Obtendo Actions da branch default
+        uses: actions/checkout@v3          
+        with:
+          ref: ${{github.event.repository.default_branch}}
+          path: .master
+          token: ${{ steps.generate_token.outputs.token }}
+      - name: Extraindo versão do pom.xml
+        id: extract-version
+        uses: ./.master/.github/actions/extract-version
+
+      - name: Configurando usuário do Git
+        run: |
+          git config user.name ${{ vars.COMMIT_USER_NAME }}
+          git config user.email ${{ vars.COMMIT_USER_EMAIL }}
+
+      - name: Lançando versão e iniciando próxima versão menor
+        env:
+          NEXT_MINOR_VERSION: ${{ steps.extract-version.outputs.nextMinorVersion }}
+        if: ${{ github.ref_name == github.event.repository.default_branch }}
+        run: |
+          mvn -B release:prepare -DdevelopmentVersion=$NEXT_MINOR_VERSION-SNAPSHOT
+
+      - name: Lançando versão e iniciando próxima versão de correção
+        env:
+          NEXT_PATCH_VERSION: ${{ steps.extract-version.outputs.nextPatchVersion }}
+        if: ${{ startsWith(github.ref_name, 'release/' )}}
+        run: |
+          mvn -B release:prepare -DdevelopmentVersion=$NEXT_PATCH_VERSION-SNAPSHOT
+
+      - name: Push
+        env:
+          RELEASE_VERSION: ${{ steps.extract-version.outputs.releaseVersion }}
+        run: |
+          git push
+          git push origin v$RELEASE_VERSION
+    outputs:
+      tag: v${{ steps.extract-version.outputs.releaseVersion }}
+  deploy-github-package:
+    uses: ./.github/workflows/deploy.yml
+    needs: release
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    permissions: 
+      packages: write
+    secrets: inherit
+  deploy-central:
+    uses: ./.github/workflows/deploy-central.yml
+    needs: release
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
+  create-patch-branch:
+    uses: ./.github/workflows/create-patch-branch.yml
+    needs: release
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
+  create-github-release:
+    uses: ./.github/workflows/create-github-release.yml
+    needs: [release,deploy-github-package]
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    permissions:
+      contents: write

@@ -1,0 +1,40 @@
+name: Implantar
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_call: 
+    inputs:
+      tag:
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag && inputs.tag || github.ref_name }}
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+    permissions:
+      packages: write
+    steps:
+    - name: Obtendo o código da aplicação
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ env.TAG }}
+    - name: Configurando JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'oracle'
+        java-version: '17'
+        cache: 'maven'
+        gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}        
+    - name: Criando arquivo Release
+      run: echo scm.tag=$TAG >> release.properties
+    - name: Implantando
+      run: mvn -B release:perform -DconnectionUrl=scm:git:file:///\${project.basedir} -Darguments=-DaltDeploymentRepository=github::https://maven.pkg.github.com/${{github.repository}}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

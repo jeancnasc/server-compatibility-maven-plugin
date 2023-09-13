@@ -1,0 +1,21 @@
+name: Info
+
+on:
+  workflow_dispatch:
+  workflow_run: 
+    workflows: ["Testar"]
+    types: [completed]
+  registry_package: 
+    types: published
+jobs:
+  info:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo '${{ toJSON(github) }}'
+      - run: echo '${{ toJSON(inputs) }}'
+      - run: echo "$GITHUB_REF_NAME"
+      - run: echo "${{ vars.COMMIT_USER_NAME }}"
+      - if: ${{ github.ref_name == github.event.repository.default_branch }}
+        run: echo "is default branch"
+      - if: ${{ startsWith(github.ref_name, 'release/' )}}
+        run: echo "is release branch"

@@ -1,0 +1,73 @@
+name: Criar release do GitHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_call: 
+    inputs:
+      tag:
+        required: true
+        type: string
+
+jobs:
+  create-github-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag && inputs.tag || github.ref_name }}
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+    steps:
+      - name: Extraindo versão do nome da Tag
+        uses: bhowell2/github-substring-action@1.0.2
+        id: version
+        with:
+          value: ${{ env.TAG }}
+          index_of_str: "v"
+      - name: Obtendo o código da aplicação
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.TAG }}
+      - name: Configurar JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+          cache: 'maven'
+          gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}
+      - name: Criando diretório de artefatos
+        run: mkdir artifacts
+      - name: Baixando Artefatos
+        run: find -name 'pom.xml' -exec mvn dependency:get dependency:copy -Dartifact=\${project.groupId}:\${project.artifactId}:${{ steps.version.outputs.substring }}:\${project.packaging} -DoutputDirectory=$PWD/artifacts -f {} \;
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Baixando Código Fonte
+        run: find -name 'pom.xml' -exec mvn dependency:get dependency:copy -Dartifact=\${project.groupId}:\${project.artifactId}:${{ steps.version.outputs.substring }}:jar:sources -DoutputDirectory=$PWD/artifacts -f {} \;
+        env:
+          GITHUB_TOKEN: ${{ github.token }}          
+      - name: Baixando Código Fonte dos Testes
+        run: find -name 'pom.xml' -exec mvn dependency:get dependency:copy -Dartifact=\${project.groupId}:\${project.artifactId}:${{ steps.version.outputs.substring }}:jar:test-sources -DoutputDirectory=$PWD/artifacts -f {} \;
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Baixando Javadoc
+        run: find -name 'pom.xml' -exec mvn dependency:get dependency:copy -Dartifact=\${project.groupId}:\${project.artifactId}:${{ steps.version.outputs.substring }}:jar:javadoc -DoutputDirectory=$PWD/artifacts -f {} \;
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Criando Release
+        id: create_release
+        run: gh release create $TAG --title=$TAG --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Anexando arquivos ao Release
+        id: upload
+        run: | 
+          find artifacts -name '*.pom' -exec gh release upload $TAG {} \;
+          find artifacts -name '*.jar' -exec gh release upload $TAG {} \; 
+          find artifacts -name '*.war' -exec gh release upload $TAG {} \; 
+          find artifacts -name '*.ear' -exec gh release upload $TAG {} \; 
+          find artifacts -name '*.zip' -exec gh release upload $TAG {} \;           
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,65 @@
+name: Criar branch de correção
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_call: 
+    inputs:
+      tag:
+        required: true
+        type: string
+
+env:
+  TAG: ${{ inputs.tag && inputs.tag || github.ref_name }}
+
+jobs:
+  create-patch-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gerando Token para Comit
+        id: generate_token
+        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}          
+      - name: Obtendo o código da aplicação
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.TAG }}
+          token: ${{ steps.generate_token.outputs.token }}
+      
+      - name: Obtendo Actions da branch default
+        uses: actions/checkout@v3
+        with:
+          ref: master
+          path: .master
+          token: ${{ steps.generate_token.outputs.token }}
+      - name: Extraindo versão do pom.xml
+        id: extract-version
+        uses: ./.master/.github/actions/extract-version
+      
+      - name: Configurando usuário do Git
+        run: |
+          git config user.name ${{ vars.COMMIT_USER_NAME }}
+          git config user.email ${{ vars.COMMIT_USER_EMAIL }}
+      - name: Criando branch de correção
+        env:
+          X_VERSION: ${{ steps.extract-version.outputs.xVersion }}
+        run: |
+          git checkout -b release/v$X_VERSION
+      - name: Atualizando versão
+        env:      
+          RELEASE_VERSION: ${{ steps.extract-version.outputs.releaseVersion }}
+          NEXT_PATCH_VERSION: ${{ steps.extract-version.outputs.nextPatchVersion }}
+        run: |
+          mvn -B release:update-versions -DdevelopmentVersion=$NEXT_PATCH_VERSION-SNAPSHOT
+          git add pom.xml
+          git add */pom.xml
+          git commit -m "release: iniciando próxima versão (v$NEXT_PATCH_VERSION-SNAPSHOT)"
+      - name: Enviando modificações
+        env:
+          X_VERSION: ${{ steps.extract-version.outputs.xVersion }}
+        run: git push origin release/v$X_VERSION

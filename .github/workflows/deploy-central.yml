@@ -1,0 +1,43 @@
+name: Implantar no Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_call: 
+    inputs:
+      tag:
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag && inputs.tag || github.ref_name }}
+      SERVER_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+      SERVER_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+    steps:
+    - name: Obtendo o código da aplicação
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ env.TAG }}
+    - name: Configurando JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'oracle'
+        java-version: '17'
+        cache: 'maven'
+        server-id: ossrh
+        server-username: SERVER_USERNAME
+        server-password: SERVER_PASSWORD
+        gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}
+    - name: Criando arquivo Release
+      run: echo scm.tag=$TAG >> release.properties
+    - name: Implantando
+      run: mvn -B release:perform -DconnectionUrl=scm:git:file:///\${project.basedir} -Darguments=-DaltDeploymentRepository=ossrh::https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/ -DaltSnapshotDeploymentRepository=ossrh::https://s01.oss.sonatype.org/content/repositories/snapshots
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

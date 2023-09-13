@@ -1,0 +1,31 @@
+name: 'Extrair Versões'
+description: 'Extrai as Versões de um Projeto Maven'
+outputs:
+  releaseVersion:
+    value: ${{ steps.versions.outputs.releaseVersion }}
+  nextMinorVersion: 
+    value: ${{ steps.versions.outputs.nextMinorVersion }}
+  nextPatchVersion:
+    value: ${{ steps.versions.outputs.nextIncrementalVersion }}
+  xVersion:
+    value: ${{ steps.versions.outputs.xVersion }}
+runs:
+  using: "composite"
+  steps:
+    - name: Preparar variáveis
+      id: versions
+      shell: bash
+      run: |
+        majorNumber=$(mvn build-helper:parse-version help:evaluate -Dexpression=parsedVersion.majorVersion -q -DforceStdout)
+        minorNumber=$(mvn build-helper:parse-version help:evaluate -Dexpression=parsedVersion.minorVersion -q -DforceStdout)
+        incrementalNumber=$(mvn build-helper:parse-version help:evaluate -Dexpression=parsedVersion.incrementalVersion -q -DforceStdout)
+        nextMinorNumber=$(mvn build-helper:parse-version help:evaluate -Dexpression=parsedVersion.nextMinorVersion -q -DforceStdout)
+        nextIncrementalNumber=$(mvn build-helper:parse-version help:evaluate -Dexpression=parsedVersion.nextIncrementalVersion -q -DforceStdout)
+        xVersion=$majorNumber.$minorNumber.x
+        releaseVersion=$majorNumber.$minorNumber.$incrementalNumber
+        nextMinorVersion=$majorNumber.$nextMinorNumber.0
+        nextIncrementalVersion=$majorNumber.$minorNumber.$nextIncrementalNumber
+        echo "releaseVersion=$releaseVersion" >> $GITHUB_OUTPUT
+        echo "xVersion=$xVersion" >> $GITHUB_OUTPUT
+        echo "nextIncrementalVersion=$nextIncrementalVersion" >> $GITHUB_OUTPUT
+        echo "nextMinorVersion=$nextMinorVersion" >> $GITHUB_OUTPUT

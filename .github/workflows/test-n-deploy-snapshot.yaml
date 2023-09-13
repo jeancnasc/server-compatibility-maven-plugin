@@ -1,0 +1,80 @@
+name: Testar e Implantar versão snapshot
+
+on:
+  push:
+   branches: 
+    - '**'
+   tags-ignore: 
+    - '**'
+
+jobs:
+  testing:
+    name: testing
+    runs-on: ubuntu-latest
+    env:
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+    steps:
+      - name: Obtendo o código da aplicação
+        uses: actions/checkout@v3
+      - id: setup
+        name: Configurar JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+          cache: 'maven'
+          gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}
+      - name: Obtendo dependências 
+        if: steps.setup.outputs.cache-hit != 'true'
+        run: mvn dependency:go-offline
+      - name: Testando
+        run: mvn -B verify  
+
+  deploy-snapshot:  
+    needs: testing
+    runs-on: ubuntu-latest
+    env:
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}      
+    permissions:
+      packages: write
+    steps:
+      - name: Obtendo o código da aplicação
+        uses: actions/checkout@v3
+      - name: Configurando JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+          cache: 'maven'
+          gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}
+      - name: Implantando
+        run: mvn -B deploy -Prelease -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  deploy-snapshot-central:
+    needs: testing
+    runs-on: ubuntu-latest
+    env:
+      SERVER_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+      SERVER_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+      GPG_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+    permissions:
+      packages: write
+    steps:
+      - name: Obtendo o código da aplicação
+        uses: actions/checkout@v3
+      - name: Configurando JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'oracle'
+          java-version: '17'
+          cache: 'maven'
+          server-id: ossrh
+          server-username: SERVER_USERNAME
+          server-password: SERVER_PASSWORD
+          gpg-private-key: ${{ secrets.PGP_PRIVATE_KEY }}
+      - name: Implantando
+        run: mvn -B deploy -Prelease -DconnectionUrl=scm:git:file:///\${project.basedir} -DaltDeploymentRepository=ossrh::https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/ -DaltSnapshotDeploymentRepository=ossrh::https://s01.oss.sonatype.org/content/repositories/snapshots
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
