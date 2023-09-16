@@ -56,8 +56,7 @@ jobs:
           NEXT_PATCH_VERSION: ${{ steps.extract-version.outputs.nextPatchVersion }}
         run: |
           mvn -B release:update-versions -DdevelopmentVersion=$NEXT_PATCH_VERSION-SNAPSHOT
-          git add pom.xml
-          git add */pom.xml
+          git add "*pom.xml"
           git commit -m "release: iniciando próxima versão (v$NEXT_PATCH_VERSION-SNAPSHOT)"
       - name: Enviando modificações
         env:
