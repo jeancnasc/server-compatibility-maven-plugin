@@ -83,6 +83,7 @@ jobs:
     secrets: inherit
   create-patch-branch:
     uses: ./.github/workflows/create-patch-branch.yml
+    if: ${{ github.ref_name == github.event.repository.default_branch }}
     needs: release
     with:
       tag: ${{ needs.release.outputs.tag }}
